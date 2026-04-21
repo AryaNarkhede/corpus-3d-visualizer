@@ -1,0 +1,29 @@
+# Build output
+build/
+out/
+
+# IDE / editor files
+.vscode/
+.idea/
+*.user
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Compiled objects
+*.o
+*.a
+*.so
+*.dll
+*.lib
+*.exe
+
+# CMake generated files (not in build/)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
