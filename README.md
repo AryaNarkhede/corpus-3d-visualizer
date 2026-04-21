@@ -245,8 +245,12 @@ any scale of OBJ file will display correctly.
 - Arcball camera: left-drag to orbit, scroll to zoom.
 - **Right-click** on the model to pick a 3-D world-space point.
 - **Annotations section**: type a label and click **Add Annotation** to store the point.
-  Yellow circular markers appear in the 3-D view at each annotation position.
-  The scrollable list supports row selection and per-row deletion.
+  Yellow circular markers (now larger, 20 px diameter) appear in the 3-D view at each
+  annotation position.  The scrollable list supports row selection and per-row deletion.
+- **Bidirectional selection**: clicking a label in the ImGui list highlights the
+  corresponding marker in the scene (shown in white, 30 px).  Conversely, left-clicking
+  a marker in the scene selects its entry in the list.  Clicking the same item again
+  deselects it.
 - **Persistence section**: edit the file path, click **Save** or **Load**.
   Status messages (green = success, red = error) appear immediately after each operation.
 - Camera drag and picking are fully isolated from ImGui widget interaction.

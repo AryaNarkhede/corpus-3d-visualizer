@@ -13,6 +13,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <string>
 
 // ─── Default model and shader paths ──────────────────────────────────────────
@@ -240,12 +241,55 @@ void App::processFrame()
                            : 1.0f;
         glm::mat4 viewProj = m_camera.projectionMatrix(aspect) * m_camera.viewMatrix();
 
+        const auto& annotations = m_annotStore.all();
+
+        // Resolve the selected annotation index within the positions array.
+        int selectedIndex = -1;
+        if (m_selectedAnnotId >= 0) {
+            for (int i = 0; i < static_cast<int>(annotations.size()); ++i) {
+                if (annotations[i].id == m_selectedAnnotId) {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+        }
+
+        // Handle a pending left-click: project markers to screen and pick nearest.
+        if (m_markerSelectRequested) {
+            m_markerSelectRequested = false;
+            constexpr float kPickRadius = 20.0f; // pixels
+            int    bestId   = -1;
+            float  bestDist = kPickRadius;
+
+            for (const auto& a : annotations) {
+                glm::vec4 clip = viewProj * glm::vec4(a.worldPos, 1.0f);
+                if (clip.w <= 0.0f) continue; // behind camera
+                glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                float sx = ( ndc.x * 0.5f + 0.5f) * static_cast<float>(m_fbWidth);
+                float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(m_fbHeight);
+                float dx = sx - static_cast<float>(m_markerSelectMX);
+                float dy = sy - static_cast<float>(m_markerSelectMY);
+                float dist = std::sqrt(dx * dx + dy * dy);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestId   = a.id;
+                }
+            }
+
+            // Toggle: clicking the already-selected marker deselects it.
+            m_selectedAnnotId = (bestId != -1 && bestId != m_selectedAnnotId)
+                                    ? bestId : -1;
+        }
+
         std::vector<glm::vec3> positions;
-        positions.reserve(m_annotStore.all().size());
-        for (const auto& a : m_annotStore.all())
+        positions.reserve(annotations.size());
+        for (const auto& a : annotations)
             positions.push_back(a.worldPos);
 
-        m_markerRenderer.draw(positions, viewProj);
+        m_markerRenderer.draw(positions, viewProj, selectedIndex);
+    } else if (m_markerSelectRequested) {
+        // No annotations: consume the pending request without doing anything.
+        m_markerSelectRequested = false;
     }
 
     // ── ImGui render (on top of scene) ────────────────────────────────────────
@@ -525,10 +569,24 @@ void App::cbMouseButton(GLFWwindow* w, int button, int action, int /*mods*/)
             app->m_dragging = true;
             double x, y;
             glfwGetCursorPos(w, &x, &y);
-            app->m_lastMouseX = static_cast<float>(x);
-            app->m_lastMouseY = static_cast<float>(y);
+            app->m_lastMouseX  = static_cast<float>(x);
+            app->m_lastMouseY  = static_cast<float>(y);
+            app->m_leftPressMX = static_cast<float>(x);
+            app->m_leftPressMY = static_cast<float>(y);
         } else if (action == GLFW_RELEASE) {
             app->m_dragging = false;
+
+            // If the mouse barely moved this is a click, not a drag.
+            // Schedule a marker proximity test for the current cursor position.
+            double x, y;
+            glfwGetCursorPos(w, &x, &y);
+            float dx = static_cast<float>(x) - app->m_leftPressMX;
+            float dy = static_cast<float>(y) - app->m_leftPressMY;
+            if (dx * dx + dy * dy < 25.0f) { // within 5-pixel radius
+                app->m_markerSelectRequested = true;
+                app->m_markerSelectMX = static_cast<int>(x);
+                app->m_markerSelectMY = static_cast<int>(y);
+            }
         }
     }
 

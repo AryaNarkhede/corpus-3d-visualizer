@@ -28,9 +28,12 @@ public:
     bool init(const std::string& shaderDir);
 
     // Upload positions and draw them as point sprites.
-    // viewProj = projection * view  (no model matrix – positions are world-space).
+    // viewProj      = projection * view  (no model matrix – positions are world-space).
+    // selectedIndex = index into positions of the currently selected annotation,
+    //                 or -1 if nothing is selected.
     void draw(const std::vector<glm::vec3>& positions,
-              const glm::mat4&              viewProj) const;
+              const glm::mat4&              viewProj,
+              int                           selectedIndex = -1) const;
 
     void shutdown();
 
