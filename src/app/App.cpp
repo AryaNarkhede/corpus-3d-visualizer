@@ -120,7 +120,7 @@ void App::loadModel(const std::string& path)
         m_statusMsg = "Loaded: " + path;
     } else {
         m_statusMsg = "Could not load model: " + path
-                      + "\nPlace an .obj file at that path and click Reload.";
+                      + "  Place an .obj file at that path and click Reload.";
     }
 }
 

@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <cmath>
 
+// Pitch is clamped to this limit to avoid flipping over the poles.
+static constexpr float kPitchLimit = 89.0f;
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 Camera::Camera(float distance, float yawDeg, float pitchDeg)
@@ -35,7 +38,7 @@ glm::mat4 Camera::viewMatrix() const
     glm::vec3 up{0.0f, 1.0f, 0.0f};
 
     // Flip up vector near poles to avoid flip artifact
-    if (std::abs(m_pitch) > 89.0f) {
+    if (std::abs(m_pitch) > kPitchLimit) {
         up = (m_pitch > 0.0f) ? glm::vec3(0.0f, 1.0f, 0.0f)
                                : glm::vec3(0.0f, -1.0f, 0.0f);
     }
@@ -57,7 +60,7 @@ void Camera::processDrag(float dx, float dy)
     m_pitch += dy * m_mouseSensitivity;
 
     // Clamp pitch to avoid flipping over the poles
-    m_pitch = std::clamp(m_pitch, -89.0f, 89.0f);
+    m_pitch = std::clamp(m_pitch, -kPitchLimit, kPitchLimit);
 }
 
 // ─── Camera::processScroll ────────────────────────────────────────────────────

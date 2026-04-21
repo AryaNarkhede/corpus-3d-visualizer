@@ -44,8 +44,17 @@ bool Model::load(const std::string& path)
     std::vector<Vertex>       vertices;
     std::vector<unsigned int> indices;
 
-    // Key: (pos_idx, nrm_idx) → vertex buffer index
-    std::unordered_map<size_t, unsigned int> indexMap;
+    // Key: (vertex_index, normal_index) → vertex buffer index
+    // Using pair<int,int> to avoid overflow from bit-packing large meshes.
+    struct PairHash {
+        size_t operator()(const std::pair<int,int>& p) const noexcept {
+            // Combine two 32-bit values into one 64-bit hash.
+            return std::hash<long long>{}(
+                (static_cast<long long>(p.first) << 32) |
+                static_cast<unsigned int>(p.second));
+        }
+    };
+    std::unordered_map<std::pair<int,int>, unsigned int, PairHash> indexMap;
 
     for (const auto& shape : shapes) {
         const auto& mesh = shape.mesh;
@@ -83,10 +92,7 @@ bool Model::load(const std::string& path)
                 }
 
                 // Build a composite key so vertices sharing pos+nrm can be merged.
-                size_t key = (static_cast<size_t>(idx.vertex_index) << 20)
-                             ^ static_cast<size_t>(idx.normal_index < 0
-                                                   ? 0xFFFFF
-                                                   : idx.normal_index);
+                auto key = std::make_pair(idx.vertex_index, idx.normal_index);
 
                 auto it = indexMap.find(key);
                 if (it != indexMap.end()) {
