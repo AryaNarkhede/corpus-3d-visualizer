@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(corpus_3d_visualizer VERSION 0.3.0 LANGUAGES C CXX)
+project(corpus_3d_visualizer VERSION 0.4.0 LANGUAGES C CXX)
 
 # ── C++ standard ──────────────────────────────────────────────────────────────
 set(CMAKE_CXX_STANDARD 17)
@@ -82,12 +82,14 @@ endif()
 add_executable(corpus_visualizer
     src/main.cpp
     src/app/App.cpp
+    src/app/AnnotationStore.cpp
     src/graphics/Shader.cpp
     src/graphics/Mesh.cpp
     src/graphics/Model.cpp
     src/graphics/Camera.cpp
     src/graphics/Renderer.cpp
     src/graphics/Framebuffer.cpp
+    src/graphics/MarkerRenderer.cpp
     src/interaction/Picker.cpp
 )
 

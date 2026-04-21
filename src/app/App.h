@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Types.h"
+#include "AnnotationStore.h"
 #include "graphics/Camera.h"
+#include "graphics/MarkerRenderer.h"
 #include "graphics/Model.h"
 #include "graphics/Renderer.h"
 #include "interaction/Picker.h"
@@ -13,10 +15,9 @@ struct GLFWwindow;
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 // Application orchestrator.
-// Milestone 3 adds: FBO colour-picking pipeline (click → world coordinates).
+// Milestone 4 adds: ImGui annotation workflow (AnnotationStore + marker dots).
 //
 // Future milestones will extend this class with:
-//   - Milestone 4: Annotation workflow (ImGui panels + AnnotationStore)
 //   - Milestone 5: JSON persistence (save / load)
 // ─────────────────────────────────────────────────────────────────────────────
 class App {
@@ -37,6 +38,7 @@ public:
 private:
     void processFrame();
     void buildUi();
+    void buildAnnotationUi();          // Milestone 4: annotation panel sub-section
     void loadModel(const std::string& path);
 
     // ── GLFW callbacks (routed through the window user pointer) ───────────────
@@ -52,9 +54,9 @@ private:
     int         m_fbHeight    = 720;
 
     // ── Graphics systems ──────────────────────────────────────────────────────
-    Camera   m_camera;
-    Model    m_model;
-    Renderer m_renderer;
+    Camera         m_camera;
+    Model          m_model;
+    Renderer       m_renderer;
 
     // ── Arcball mouse state ────────────────────────────────────────────────────
     bool  m_dragging       = false;
@@ -76,6 +78,13 @@ private:
 
     glm::mat4 computeModelMatrix() const;
 
-    // ── Milestone 4: AnnotationStore and UiLayer will be added here ───────────
-    // ── Milestone 5: JsonPersistence will be added here ───────────────────────
+    // ── Milestone 4: Annotation workflow ──────────────────────────────────────
+    AnnotationStore m_annotStore;
+    MarkerRenderer  m_markerRenderer;
+    bool            m_markerReady     = false;
+    char            m_annotLabelBuf[256] = {};
+    std::string     m_annotErrorMsg;
+    int             m_selectedAnnotId = -1;
+
+    // ── Milestone 5: JSON persistence will be added here ──────────────────────
 };
