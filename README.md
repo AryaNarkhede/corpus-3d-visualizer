@@ -4,21 +4,22 @@ An interactive platform for exploring 3D anatomical models. Students and educato
 
 ---
 
-## Milestone 2 — Model Loading + Blinn-Phong Shading + Arcball Camera
+## Milestone 3 — FBO Colour-Picking Pipeline (click → world coordinates)
 
-The current state of the repository implements **Milestone 2**, building on top of the Milestone 1 shell.
+The current state of the repository implements **Milestone 3**, building on top of Milestones 1 & 2.
 
-### What's new in Milestone 2
+### What's new in Milestone 3
 
 | Feature | Details |
 |---|---|
-| OBJ loading | tinyobjloader v2.0.0-rc13 (single header, bundled) |
-| GPU mesh pipeline | VAO / VBO / EBO, positions + normals at locations 0 and 1 |
-| Normal fallback | Flat per-triangle normals computed when OBJ has none |
-| Blinn-Phong shading | GLSL vertex + fragment shaders in `assets/shaders/` |
-| Arcball camera | Left-drag rotates, scroll zooms, ImGui-capture safe |
-| GLM math | header-only (system package or FetchContent fallback) |
-| ImGui controls | Live light direction, colour, ambient, diffuse, specular, shininess |
+| Picking FBO | Offscreen framebuffer with RGBA8 colour + depth24 attachments |
+| Picking shaders | Flat-colour `picking.vert` / `picking.frag` (no lighting) |
+| Colour-ID encoding | Integer object ID packed into RGB bytes (24-bit range) |
+| Depth readback | Per-pixel depth read from the picking FBO |
+| World coordinate recovery | Inverse(proj × view) reconstruction from NDC + depth |
+| Right-click to pick | Right-click on the model returns a stable 3D world position |
+| ImGui pick display | "Picking" panel shows world coords, object ID, and depth |
+| Resize-safe FBO | Picking framebuffer auto-resizes with the window |
 
 ### Controls
 
@@ -26,13 +27,14 @@ The current state of the repository implements **Milestone 2**, building on top 
 |---|---|
 | Left mouse drag | Orbit / rotate camera around model |
 | Scroll wheel | Zoom in / out |
+| Right-click | Pick a 3D point on the model surface |
 | Distance slider | Fine-grained zoom control in the UI panel |
 
 ### Project layout
 
 ```
 corpus-3d-visualizer/
-├── CMakeLists.txt              # C++17 build (v0.2)
+├── CMakeLists.txt              # C++17 build (v0.3)
 ├── README.md
 ├── .gitignore
 ├── external/
@@ -44,19 +46,24 @@ corpus-3d-visualizer/
 │   │   └── cube.obj            # Default test model (unit cube with normals)
 │   └── shaders/
 │       ├── mesh.vert           # Vertex shader (position, normal transform)
-│       └── mesh.frag           # Fragment shader (Blinn-Phong lighting)
+│       ├── mesh.frag           # Fragment shader (Blinn-Phong lighting)
+│       ├── picking.vert        # Picking vertex shader (position only)
+│       └── picking.frag        # Picking fragment shader (flat colour ID)
 ├── src/
 │   ├── main.cpp
 │   ├── app/
-│   │   ├── App.h               # Application class (Milestone 2 additions)
-│   │   └── App.cpp             # GLFW callbacks, render loop, ImGui panels
-│   └── graphics/
-│       ├── Lighting.h          # DirectionalLight + Material structs
-│       ├── Shader.h / .cpp     # Compile, link, uniform API
-│       ├── Mesh.h / .cpp       # VAO/VBO/EBO, indexed + non-indexed draw
-│       ├── Model.h / .cpp      # tinyobjloader parsing, bounding sphere
-│       ├── Camera.h / .cpp     # Arcball orbit camera
-│       └── Renderer.h / .cpp   # Blinn-Phong forward pass
+│   │   ├── App.h / .cpp        # Application class (Milestone 3 additions)
+│   │   └── Types.h             # PickResult struct
+│   ├── graphics/
+│   │   ├── Lighting.h          # DirectionalLight + Material structs
+│   │   ├── Shader.h / .cpp     # Compile, link, uniform API (+ setVec4)
+│   │   ├── Mesh.h / .cpp       # VAO/VBO/EBO, indexed + non-indexed draw
+│   │   ├── Model.h / .cpp      # tinyobjloader parsing, bounding sphere
+│   │   ├── Camera.h / .cpp     # Arcball orbit camera
+│   │   ├── Renderer.h / .cpp   # Blinn-Phong forward pass
+│   │   └── Framebuffer.h / .cpp # FBO creation/resize/readback
+│   └── interaction/
+│       └── Picker.h / .cpp     # Colour-ID encode/decode, picking pipeline
 └── data/
     └── annotations.json        # Persisted labels (Milestone 5)
 ```
@@ -125,7 +132,7 @@ On **Windows** with MSVC the binary will be at `build\bin\Debug\corpus_visualize
 
 1. Copy your `.obj` (and optional `.mtl`) file into `assets/models/`.
 2. Launch the app.
-3. In the **"3D Corpus Visualiser – Milestone 2"** ImGui panel, update the path in the
+3. In the **"3D Corpus Visualiser – Milestone 3"** ImGui panel, update the path in the
    text field (e.g. `/absolute/path/to/my_model.obj` or a relative path) and click
    **Load / Reload**.
 
@@ -134,15 +141,17 @@ any scale of OBJ file will display correctly.
 
 ---
 
-### Runtime behaviour (Milestone 2)
+### Runtime behaviour (Milestone 3)
 
 - Opens a 1280 × 720 window.
 - Loads `assets/models/cube.obj` by default (a lit unit cube).
 - ImGui panel lets you change light direction, light colour, ambient strength, and
   material diffuse/specular/shininess in real time.
 - Arcball camera: left-drag to orbit, scroll to zoom.
-- If the default model is absent, a clear status message is shown in the panel with
-  instructions on where to place the file.
+- **Right-click** on the model to pick a 3D world-space point. The "Picking" section
+  of the panel displays the world coordinates, object ID, and depth value.
+- Clicking the background returns no pick (displayed as "No pick result yet").
+- Picking FBO automatically resizes when the window is resized.
 
 ---
 
@@ -152,6 +161,6 @@ any scale of OBJ file will display correctly.
 |---|---|
 | **1** ✅ | CMake + GLFW window + Dear ImGui boilerplate |
 | **2** ✅ | OBJ model loading, Blinn-Phong shading, Arcball camera |
-| 3 | FBO colour-picking pipeline (click → world coordinates) |
+| **3** ✅ | FBO colour-picking pipeline (click → world coordinates) |
 | 4 | ImGui annotation workflow (label + store) |
 | 5 | JSON persistence (save / load annotations) |

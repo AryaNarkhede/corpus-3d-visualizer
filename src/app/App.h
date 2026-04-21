@@ -1,8 +1,10 @@
 #pragma once
 
+#include "Types.h"
 #include "graphics/Camera.h"
 #include "graphics/Model.h"
 #include "graphics/Renderer.h"
+#include "interaction/Picker.h"
 
 #include <string>
 
@@ -11,10 +13,9 @@ struct GLFWwindow;
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 // Application orchestrator.
-// Milestone 2 adds: OBJ model loading, Blinn-Phong renderer, Arcball camera.
+// Milestone 3 adds: FBO colour-picking pipeline (click → world coordinates).
 //
 // Future milestones will extend this class with:
-//   - Milestone 3: FBO colour-picking pipeline
 //   - Milestone 4: Annotation workflow (ImGui panels + AnnotationStore)
 //   - Milestone 5: JSON persistence (save / load)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@ private:
     int         m_fbWidth     = 1280;
     int         m_fbHeight    = 720;
 
-    // ── Milestone 2: graphics systems ─────────────────────────────────────────
+    // ── Graphics systems ──────────────────────────────────────────────────────
     Camera   m_camera;
     Model    m_model;
     Renderer m_renderer;
@@ -65,7 +66,16 @@ private:
     bool        m_rendererReady     = false;
     std::string m_statusMsg;
 
-    // ── Milestone 3: Framebuffer (FBO) and Picker will be added here ──────────
+    // ── Milestone 3: FBO picking pipeline ─────────────────────────────────────
+    Picker     m_picker;
+    bool       m_pickerReady    = false;
+    bool       m_pickRequested  = false;
+    int        m_pickMouseX     = 0;
+    int        m_pickMouseY     = 0;
+    PickResult m_lastPick;
+
+    glm::mat4 computeModelMatrix() const;
+
     // ── Milestone 4: AnnotationStore and UiLayer will be added here ───────────
     // ── Milestone 5: JsonPersistence will be added here ───────────────────────
 };

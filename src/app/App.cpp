@@ -7,6 +7,8 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -101,11 +103,27 @@ bool App::init(int width, int height, const char* title)
         std::fprintf(stderr, "[App] %s\n", m_statusMsg.c_str());
     }
 
+    // ── Picker (Milestone 3) ──────────────────────────────────────────────────
+    m_pickerReady = m_picker.init(kShaderDir, m_fbWidth, m_fbHeight);
+    if (!m_pickerReady) {
+        std::fprintf(stderr, "[App] Picker initialisation failed\n");
+    }
+
     // ── Load default model ────────────────────────────────────────────────────
     loadModel(kDefaultModelPath);
 
     m_initialized = true;
     return true;
+}
+
+// ─── App::computeModelMatrix ──────────────────────────────────────────────────
+
+glm::mat4 App::computeModelMatrix() const
+{
+    float scale = (m_model.radius() > 0.0f) ? (1.0f / m_model.radius()) : 1.0f;
+    return glm::scale(
+        glm::translate(glm::mat4(1.0f), -m_model.center()),
+        glm::vec3(scale));
 }
 
 // ─── App::loadModel ───────────────────────────────────────────────────────────
@@ -118,6 +136,7 @@ void App::loadModel(const std::string& path)
         m_camera.setTarget({0.0f, 0.0f, 0.0f}); // model is centred by renderer
         m_camera.setDistance(r * 3.0f);
         m_statusMsg = "Loaded: " + path;
+        m_lastPick = {};
     } else {
         m_statusMsg = "Could not load model: " + path
                       + "  Place an .obj file at that path and click Reload.";
@@ -147,7 +166,37 @@ void App::processFrame()
 
     buildUi();
 
-    // ── 3-D render pass ───────────────────────────────────────────────────────
+    // ── Picking pass (offscreen FBO, before scene render) ─────────────────────
+    if (m_rendererReady && m_pickerReady && m_model.isLoaded()) {
+        glm::mat4 modelMat = computeModelMatrix();
+        m_picker.renderPickingPass(m_model, m_camera, modelMat,
+                                   m_fbWidth, m_fbHeight);
+
+        if (m_pickRequested) {
+            m_pickRequested = false;
+
+            float aspect = (m_fbHeight > 0)
+                               ? static_cast<float>(m_fbWidth) / static_cast<float>(m_fbHeight)
+                               : 1.0f;
+            glm::mat4 proj = m_camera.projectionMatrix(aspect);
+            glm::mat4 view = m_camera.viewMatrix();
+
+            m_lastPick = m_picker.pick(m_pickMouseX, m_pickMouseY,
+                                        m_fbHeight, proj, view);
+
+            if (m_lastPick.valid) {
+                std::printf("[App] Pick hit: world(%.3f, %.3f, %.3f) id=%d depth=%.4f\n",
+                            m_lastPick.worldPos.x, m_lastPick.worldPos.y,
+                            m_lastPick.worldPos.z, m_lastPick.objectId,
+                            m_lastPick.depth);
+            }
+        }
+    }
+
+    // ── 3-D render pass (default framebuffer) ─────────────────────────────────
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, m_fbWidth, m_fbHeight);
+
     if (m_rendererReady) {
         m_renderer.draw(m_model, m_camera, m_fbWidth, m_fbHeight);
     } else {
@@ -168,7 +217,7 @@ void App::buildUi()
 {
     ImGui::SetNextWindowPos({10.0f, 10.0f}, ImGuiCond_Once);
     ImGui::SetNextWindowSize({420.0f, 0.0f}, ImGuiCond_Once);
-    ImGui::Begin("3D Corpus Visualiser – Milestone 2");
+    ImGui::Begin("3D Corpus Visualiser – Milestone 3");
 
     // ── Model section ─────────────────────────────────────────────────────────
     ImGui::SeparatorText("Model");
@@ -203,9 +252,23 @@ void App::buildUi()
     ImGui::ColorEdit3("Specular", &mat.specular.x);
     ImGui::SliderFloat("Shininess", &mat.shininess, 1.0f, 256.0f);
 
+    // ── Picking section (Milestone 3) ─────────────────────────────────────────
+    ImGui::SeparatorText("Picking");
+    ImGui::Text("Right-click on the model to pick a 3D point.");
+
+    if (m_lastPick.valid) {
+        ImGui::TextColored({0.4f, 1.0f, 0.4f, 1.0f}, "Hit!");
+        ImGui::Text("World: (%.3f, %.3f, %.3f)",
+                    m_lastPick.worldPos.x, m_lastPick.worldPos.y,
+                    m_lastPick.worldPos.z);
+        ImGui::Text("Object ID: %d", m_lastPick.objectId);
+        ImGui::Text("Depth: %.4f", m_lastPick.depth);
+    } else {
+        ImGui::TextDisabled("No pick result yet.");
+    }
+
     // ── Roadmap ───────────────────────────────────────────────────────────────
     ImGui::SeparatorText("Roadmap");
-    ImGui::TextDisabled("Milestone 3: FBO colour-picking pipeline");
     ImGui::TextDisabled("Milestone 4: Annotation workflow");
     ImGui::TextDisabled("Milestone 5: JSON persistence");
 
@@ -219,6 +282,7 @@ void App::shutdown()
     if (!m_initialized) return;
     m_initialized = false;
 
+    m_picker.shutdown();
     m_renderer.shutdown();
 
     ImGui_ImplOpenGL3_Shutdown();
@@ -238,6 +302,8 @@ void App::cbFramebufferSize(GLFWwindow* w, int width, int height)
     if (app) {
         app->m_fbWidth  = width;
         app->m_fbHeight = height;
+        if (app->m_pickerReady)
+            app->m_picker.resize(width, height);
     }
     glViewport(0, 0, width, height);
 }
@@ -276,6 +342,14 @@ void App::cbMouseButton(GLFWwindow* w, int button, int action, int /*mods*/)
             app->m_dragging = false;
         }
     }
+
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
+        double x, y;
+        glfwGetCursorPos(w, &x, &y);
+        app->m_pickRequested = true;
+        app->m_pickMouseX    = static_cast<int>(x);
+        app->m_pickMouseY    = static_cast<int>(y);
+    }
 }
 
 void App::cbCursorPos(GLFWwindow* w, double xpos, double ypos)
@@ -299,4 +373,3 @@ void App::cbCursorPos(GLFWwindow* w, double xpos, double ypos)
     app->m_lastMouseX = static_cast<float>(xpos);
     app->m_lastMouseY = static_cast<float>(ypos);
 }
-

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(corpus_3d_visualizer VERSION 0.2.0 LANGUAGES C CXX)
+project(corpus_3d_visualizer VERSION 0.3.0 LANGUAGES C CXX)
 
 # ── C++ standard ──────────────────────────────────────────────────────────────
 set(CMAKE_CXX_STANDARD 17)
@@ -87,6 +87,8 @@ add_executable(corpus_visualizer
     src/graphics/Model.cpp
     src/graphics/Camera.cpp
     src/graphics/Renderer.cpp
+    src/graphics/Framebuffer.cpp
+    src/interaction/Picker.cpp
 )
 
 target_include_directories(corpus_visualizer PRIVATE src)
