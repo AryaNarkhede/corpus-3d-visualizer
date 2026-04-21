@@ -22,6 +22,18 @@
 static const char* kDefaultModelPath  = ASSETS_DIR "/models/cube.obj";
 static const char* kShaderDir         = ASSETS_DIR "/shaders";
 
+// ─── trimString ──────────────────────────────────────────────────────────────
+// Returns a copy of s with leading and trailing whitespace removed.
+// An empty or whitespace-only string returns "".
+
+static std::string trimString(const std::string& s)
+{
+    auto first = s.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return {};
+    auto last = s.find_last_not_of(" \t\r\n");
+    return s.substr(first, last - first + 1);
+}
+
 // ─── GLFW error callback ─────────────────────────────────────────────────────
 
 static void glfwErrorCallback(int error, const char* description)
@@ -109,6 +121,12 @@ bool App::init(int width, int height, const char* title)
         std::fprintf(stderr, "[App] Picker initialisation failed\n");
     }
 
+    // ── Marker renderer (Milestone 4) ─────────────────────────────────────────
+    m_markerReady = m_markerRenderer.init(kShaderDir);
+    if (!m_markerReady) {
+        std::fprintf(stderr, "[App] MarkerRenderer initialisation failed\n");
+    }
+
     // ── Load default model ────────────────────────────────────────────────────
     loadModel(kDefaultModelPath);
 
@@ -137,6 +155,8 @@ void App::loadModel(const std::string& path)
         m_camera.setDistance(r * 3.0f);
         m_statusMsg = "Loaded: " + path;
         m_lastPick = {};
+        m_annotStore.clear();           // reset annotations for the new model
+        m_selectedAnnotId = -1;
     } else {
         m_statusMsg = "Could not load model: " + path
                       + "  Place an .obj file at that path and click Reload.";
@@ -204,6 +224,21 @@ void App::processFrame()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
 
+    // ── Annotation markers (Milestone 4) ──────────────────────────────────────
+    if (m_markerReady && !m_annotStore.all().empty()) {
+        float aspect = (m_fbHeight > 0)
+                           ? static_cast<float>(m_fbWidth) / static_cast<float>(m_fbHeight)
+                           : 1.0f;
+        glm::mat4 viewProj = m_camera.projectionMatrix(aspect) * m_camera.viewMatrix();
+
+        std::vector<glm::vec3> positions;
+        positions.reserve(m_annotStore.all().size());
+        for (const auto& a : m_annotStore.all())
+            positions.push_back(a.worldPos);
+
+        m_markerRenderer.draw(positions, viewProj);
+    }
+
     // ── ImGui render (on top of scene) ────────────────────────────────────────
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -217,7 +252,7 @@ void App::buildUi()
 {
     ImGui::SetNextWindowPos({10.0f, 10.0f}, ImGuiCond_Once);
     ImGui::SetNextWindowSize({420.0f, 0.0f}, ImGuiCond_Once);
-    ImGui::Begin("3D Corpus Visualiser – Milestone 3");
+    ImGui::Begin("3D Corpus Visualiser – Milestone 4");
 
     // ── Model section ─────────────────────────────────────────────────────────
     ImGui::SeparatorText("Model");
@@ -267,12 +302,104 @@ void App::buildUi()
         ImGui::TextDisabled("No pick result yet.");
     }
 
+    // ── Annotations section (Milestone 4) ─────────────────────────────────────
+    buildAnnotationUi();
+
     // ── Roadmap ───────────────────────────────────────────────────────────────
     ImGui::SeparatorText("Roadmap");
-    ImGui::TextDisabled("Milestone 4: Annotation workflow");
     ImGui::TextDisabled("Milestone 5: JSON persistence");
 
     ImGui::End();
+}
+
+// ─── App::buildAnnotationUi ───────────────────────────────────────────────────
+// Sub-section rendered inside the main ImGui window.
+// Allows the user to create an annotation from the latest valid pick result,
+// see all annotations in a scrollable list, and delete individual entries.
+
+void App::buildAnnotationUi()
+{
+    ImGui::SeparatorText("Annotations");
+
+    // ── Label input ───────────────────────────────────────────────────────────
+    ImGui::Text("Label:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("##annotlabel", m_annotLabelBuf, sizeof(m_annotLabelBuf));
+
+    // ── Validation & Add button ───────────────────────────────────────────────
+    // Determine whether creation is currently possible and why not.
+    bool pickInvalid = !m_lastPick.valid;
+    std::string trimmedLabel = trimString(m_annotLabelBuf);
+    bool labelEmpty  = trimmedLabel.empty();
+    bool canAdd = !pickInvalid && !labelEmpty;
+
+    if (!canAdd) ImGui::BeginDisabled();
+    if (ImGui::Button("Add Annotation")) {
+        m_annotStore.add(trimmedLabel, m_lastPick.worldPos, m_lastPick.objectId);
+        m_annotLabelBuf[0] = '\0';
+        m_annotErrorMsg.clear();
+    }
+    if (!canAdd) ImGui::EndDisabled();
+
+    // Show inline validation feedback.
+    if (pickInvalid) {
+        ImGui::SameLine();
+        ImGui::TextColored({1.0f, 0.5f, 0.2f, 1.0f}, "Pick a point first");
+    } else if (labelEmpty) {
+        ImGui::SameLine();
+        ImGui::TextColored({1.0f, 0.5f, 0.2f, 1.0f}, "Label cannot be empty");
+    }
+
+    if (!m_annotErrorMsg.empty()) {
+        ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "%s", m_annotErrorMsg.c_str());
+    }
+
+    // ── Annotation list ───────────────────────────────────────────────────────
+    const auto& annotations = m_annotStore.all();
+    ImGui::Text("Annotations: %d", static_cast<int>(annotations.size()));
+
+    // Fixed-height scrollable child region for the list.
+    ImGui::BeginChild("##annotlist", {0.0f, 160.0f}, true);
+
+    if (annotations.empty()) {
+        ImGui::TextDisabled("No annotations yet.");
+    } else {
+        int toDelete = -1; // collect the ID to delete (avoids modifying while iterating)
+        for (const auto& a : annotations) {
+            bool selected = (a.id == m_selectedAnnotId);
+
+            // Selectable row — clicking highlights the entry.
+            char rowLabel[64];
+            std::snprintf(rowLabel, sizeof(rowLabel), "[%d] %s", a.id, a.label.c_str());
+            if (ImGui::Selectable(rowLabel, selected,
+                                  ImGuiSelectableFlags_None, {0.0f, 0.0f})) {
+                m_selectedAnnotId = selected ? -1 : a.id; // toggle
+            }
+
+            // World-position tooltip on hover.
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("World: (%.3f, %.3f, %.3f)  ObjID: %d",
+                                  a.worldPos.x, a.worldPos.y, a.worldPos.z,
+                                  a.objectId);
+            }
+
+            // Delete button on the same row.
+            ImGui::SameLine();
+            char btnId[32];
+            std::snprintf(btnId, sizeof(btnId), "Delete##%d", a.id);
+            if (ImGui::SmallButton(btnId)) {
+                toDelete = a.id;
+            }
+        }
+
+        if (toDelete != -1) {
+            m_annotStore.remove(toDelete);
+            if (m_selectedAnnotId == toDelete) m_selectedAnnotId = -1;
+        }
+    }
+
+    ImGui::EndChild();
 }
 
 // ─── App::shutdown ────────────────────────────────────────────────────────────
@@ -283,6 +410,7 @@ void App::shutdown()
     m_initialized = false;
 
     m_picker.shutdown();
+    m_markerRenderer.shutdown();
     m_renderer.shutdown();
 
     ImGui_ImplOpenGL3_Shutdown();
