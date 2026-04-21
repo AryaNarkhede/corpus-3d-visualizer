@@ -9,6 +9,8 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "io/JsonPersistence.h"
+
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -19,8 +21,14 @@
 #  define ASSETS_DIR "assets"
 #endif
 
-static const char* kDefaultModelPath  = ASSETS_DIR "/models/cube.obj";
-static const char* kShaderDir         = ASSETS_DIR "/shaders";
+// DATA_DIR is injected by CMake as an absolute path to the data/ folder.
+#ifndef DATA_DIR
+#  define DATA_DIR "data"
+#endif
+
+static const char* kDefaultModelPath    = ASSETS_DIR "/models/cube.obj";
+static const char* kShaderDir           = ASSETS_DIR "/shaders";
+static const char* kDefaultAnnotPath    = DATA_DIR   "/annotations.json";
 
 // ─── trimString ──────────────────────────────────────────────────────────────
 // Returns a copy of s with leading and trailing whitespace removed.
@@ -46,6 +54,7 @@ static void glfwErrorCallback(int error, const char* description)
 App::App()
 {
     std::strncpy(m_modelPathBuf, kDefaultModelPath, sizeof(m_modelPathBuf) - 1);
+    std::strncpy(m_jsonPathBuf,  kDefaultAnnotPath, sizeof(m_jsonPathBuf)  - 1);
 }
 
 App::~App()
@@ -252,7 +261,7 @@ void App::buildUi()
 {
     ImGui::SetNextWindowPos({10.0f, 10.0f}, ImGuiCond_Once);
     ImGui::SetNextWindowSize({420.0f, 0.0f}, ImGuiCond_Once);
-    ImGui::Begin("3D Corpus Visualiser – Milestone 4");
+    ImGui::Begin("3D Corpus Visualiser – Milestone 5");
 
     // ── Model section ─────────────────────────────────────────────────────────
     ImGui::SeparatorText("Model");
@@ -302,12 +311,8 @@ void App::buildUi()
         ImGui::TextDisabled("No pick result yet.");
     }
 
-    // ── Annotations section (Milestone 4) ─────────────────────────────────────
+    // ── Annotations section (Milestone 4 + 5) ────────────────────────────────
     buildAnnotationUi();
-
-    // ── Roadmap ───────────────────────────────────────────────────────────────
-    ImGui::SeparatorText("Roadmap");
-    ImGui::TextDisabled("Milestone 5: JSON persistence");
 
     ImGui::End();
 }
@@ -400,6 +405,62 @@ void App::buildAnnotationUi()
     }
 
     ImGui::EndChild();
+
+    // ── Persistence section (Milestone 5) ────────────────────────────────────
+    ImGui::SeparatorText("Persistence");
+
+    // Editable file path.
+    ImGui::Text("File:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("##jsonpath", m_jsonPathBuf, sizeof(m_jsonPathBuf));
+
+    // Save / Load buttons on the same row.
+    if (ImGui::Button("Save")) {
+        saveAnnotations();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Load")) {
+        loadAnnotations();
+    }
+
+    // Status message with colour coding.
+    if (!m_persistMsg.empty()) {
+        if (m_persistSuccess)
+            ImGui::TextColored({0.4f, 1.0f, 0.4f, 1.0f}, "%s", m_persistMsg.c_str());
+        else
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "%s", m_persistMsg.c_str());
+    }
+}
+
+// ─── App::saveAnnotations ─────────────────────────────────────────────────────
+
+void App::saveAnnotations()
+{
+    std::string path = trimString(m_jsonPathBuf);
+    if (path.empty()) path = kDefaultAnnotPath;
+
+    auto result = JsonPersistence::saveAnnotations(m_annotStore.all(), path);
+    m_persistMsg     = result.message;
+    m_persistSuccess = result.success;
+}
+
+// ─── App::loadAnnotations ─────────────────────────────────────────────────────
+
+void App::loadAnnotations()
+{
+    std::string path = trimString(m_jsonPathBuf);
+    if (path.empty()) path = kDefaultAnnotPath;
+
+    std::vector<Annotation> loaded;
+    auto result = JsonPersistence::loadAnnotations(path, loaded);
+    m_persistMsg     = result.message;
+    m_persistSuccess = result.success;
+
+    if (result.success) {
+        m_annotStore.replaceAll(std::move(loaded));
+        m_selectedAnnotId = -1;
+    }
 }
 
 // ─── App::shutdown ────────────────────────────────────────────────────────────

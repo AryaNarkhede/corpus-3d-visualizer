@@ -6,9 +6,9 @@
 #include <vector>
 
 // ─── AnnotationStore ──────────────────────────────────────────────────────────
-// In-memory store for Annotation objects (Milestone 4).
+// In-memory store for Annotation objects.
 // Provides add / remove / list with a simple auto-incrementing ID.
-// No persistence at this milestone (JSON save/load is Milestone 5).
+// Milestone 5 adds replaceAll() for JSON persistence (load).
 // ─────────────────────────────────────────────────────────────────────────────
 class AnnotationStore {
 public:
@@ -21,6 +21,10 @@ public:
 
     // Read-only access to the full list.
     const std::vector<Annotation>& all() const { return m_annotations; }
+
+    // Replace all annotations with the provided list (Milestone 5 – load).
+    // Resets m_nextId to one above the highest id in the list (or 1 if empty).
+    void replaceAll(std::vector<Annotation> loaded);
 
     // Remove all annotations (e.g. when a new model is loaded).
     void clear();
