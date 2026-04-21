@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(corpus_3d_visualizer VERSION 0.4.0 LANGUAGES C CXX)
+project(corpus_3d_visualizer VERSION 0.5.0 LANGUAGES C CXX)
 
 # ── C++ standard ──────────────────────────────────────────────────────────────
 set(CMAKE_CXX_STANDARD 17)
@@ -76,6 +76,20 @@ if(NOT glm_FOUND)
     FetchContent_MakeAvailable(glm)
 endif()
 
+# ── nlohmann/json – try system package first, fall back to FetchContent ────────
+find_package(nlohmann_json 3.10 QUIET)
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "nlohmann/json not found via find_package – fetching via FetchContent")
+    include(FetchContent)
+    FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG        v3.11.3
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Application target
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +105,7 @@ add_executable(corpus_visualizer
     src/graphics/Framebuffer.cpp
     src/graphics/MarkerRenderer.cpp
     src/interaction/Picker.cpp
+    src/io/JsonPersistence.cpp
 )
 
 target_include_directories(corpus_visualizer PRIVATE src)
@@ -99,6 +114,7 @@ target_include_directories(corpus_visualizer PRIVATE src)
 # any working directory (development builds; packaging would copy assets).
 target_compile_definitions(corpus_visualizer PRIVATE
     ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets"
+    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
 )
 
 if(TARGET glfw3::glfw3)
@@ -109,6 +125,7 @@ if(TARGET glfw3::glfw3)
         imgui
         tinyobjloader
         glm::glm
+        nlohmann_json::nlohmann_json
     )
 else()
     target_link_libraries(corpus_visualizer PRIVATE
@@ -118,6 +135,7 @@ else()
         imgui
         tinyobjloader
         glm::glm
+        nlohmann_json::nlohmann_json
     )
 endif()
 

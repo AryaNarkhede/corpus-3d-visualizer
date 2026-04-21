@@ -15,10 +15,7 @@ struct GLFWwindow;
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 // Application orchestrator.
-// Milestone 4 adds: ImGui annotation workflow (AnnotationStore + marker dots).
-//
-// Future milestones will extend this class with:
-//   - Milestone 5: JSON persistence (save / load)
+// Milestone 5 adds: JSON persistence (save / load annotations).
 // ─────────────────────────────────────────────────────────────────────────────
 class App {
 public:
@@ -38,8 +35,12 @@ public:
 private:
     void processFrame();
     void buildUi();
-    void buildAnnotationUi();          // Milestone 4: annotation panel sub-section
+    void buildAnnotationUi();          // Annotation panel sub-section
     void loadModel(const std::string& path);
+
+    // ── Persistence helpers (Milestone 5) ─────────────────────────────────────
+    void saveAnnotations();
+    void loadAnnotations();
 
     // ── GLFW callbacks (routed through the window user pointer) ───────────────
     static void cbFramebufferSize(GLFWwindow* w, int width, int height);
@@ -86,5 +87,8 @@ private:
     std::string     m_annotErrorMsg;
     int             m_selectedAnnotId = -1;
 
-    // ── Milestone 5: JSON persistence will be added here ──────────────────────
+    // ── Milestone 5: JSON persistence ─────────────────────────────────────────
+    char        m_jsonPathBuf[512] = {};   // editable file path for save/load
+    std::string m_persistMsg;              // save/load status message shown in UI
+    bool        m_persistSuccess = true;   // colours the status message
 };
