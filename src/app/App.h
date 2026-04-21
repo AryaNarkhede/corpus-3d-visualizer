@@ -1,14 +1,19 @@
 #pragma once
 
+#include "graphics/Camera.h"
+#include "graphics/Model.h"
+#include "graphics/Renderer.h"
+
+#include <string>
+
 // Forward declarations
 struct GLFWwindow;
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-// Application orchestrator for Milestone 1.
-// Owns the GLFW window, OpenGL context, and ImGui lifecycle.
+// Application orchestrator.
+// Milestone 2 adds: OBJ model loading, Blinn-Phong renderer, Arcball camera.
 //
 // Future milestones will extend this class with:
-//   - Milestone 2: Model loading, Blinn-Phong renderer, Arcball camera
 //   - Milestone 3: FBO colour-picking pipeline
 //   - Milestone 4: Annotation workflow (ImGui panels + AnnotationStore)
 //   - Milestone 5: JSON persistence (save / load)
@@ -30,13 +35,37 @@ public:
 
 private:
     void processFrame();
+    void buildUi();
+    void loadModel(const std::string& path);
 
-    GLFWwindow* m_window = nullptr;
+    // ── GLFW callbacks (routed through the window user pointer) ───────────────
+    static void cbFramebufferSize(GLFWwindow* w, int width, int height);
+    static void cbScroll(GLFWwindow* w, double xoffset, double yoffset);
+    static void cbCursorPos(GLFWwindow* w, double xpos, double ypos);
+    static void cbMouseButton(GLFWwindow* w, int button, int action, int mods);
+
+    // ── Window / GL state ─────────────────────────────────────────────────────
+    GLFWwindow* m_window      = nullptr;
     bool        m_initialized = false;
+    int         m_fbWidth     = 1280;
+    int         m_fbHeight    = 720;
 
-    // ── Placeholder state for future milestones ──
-    // Milestone 2: Renderer, Model, Camera will be added here
-    // Milestone 3: Framebuffer (FBO) and Picker will be added here
-    // Milestone 4: AnnotationStore and UiLayer will be added here
-    // Milestone 5: JsonPersistence will be added here
+    // ── Milestone 2: graphics systems ─────────────────────────────────────────
+    Camera   m_camera;
+    Model    m_model;
+    Renderer m_renderer;
+
+    // ── Arcball mouse state ────────────────────────────────────────────────────
+    bool  m_dragging       = false;
+    float m_lastMouseX     = 0.0f;
+    float m_lastMouseY     = 0.0f;
+
+    // ── UI state ──────────────────────────────────────────────────────────────
+    char        m_modelPathBuf[512] = {};
+    bool        m_rendererReady     = false;
+    std::string m_statusMsg;
+
+    // ── Milestone 3: Framebuffer (FBO) and Picker will be added here ──────────
+    // ── Milestone 4: AnnotationStore and UiLayer will be added here ───────────
+    // ── Milestone 5: JsonPersistence will be added here ───────────────────────
 };
