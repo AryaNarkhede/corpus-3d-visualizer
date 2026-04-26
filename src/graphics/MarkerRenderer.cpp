@@ -36,7 +36,8 @@ bool MarkerRenderer::init(const std::string& shaderDir)
 // ─── MarkerRenderer::draw ─────────────────────────────────────────────────────
 
 void MarkerRenderer::draw(const std::vector<glm::vec3>& positions,
-                           const glm::mat4&              viewProj) const
+                           const glm::mat4&              viewProj,
+                           int                           selectedIndex) const
 {
     if (positions.empty() || !m_shader.isValid()) return;
 
@@ -53,7 +54,9 @@ void MarkerRenderer::draw(const std::vector<glm::vec3>& positions,
 
     m_shader.use();
     m_shader.setMat4("uViewProjection", viewProj);
-    m_shader.setVec4("uColor", {1.0f, 0.9f, 0.2f, 1.0f}); // bright yellow
+    m_shader.setVec4("uColor",         {1.0f, 0.9f, 0.2f, 1.0f}); // bright yellow
+    m_shader.setVec4("uSelectedColor", {1.0f, 1.0f, 1.0f, 1.0f}); // white for selected
+    m_shader.setInt ("uSelectedIndex", selectedIndex);
 
     glBindVertexArray(m_vao);
     glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(positions.size()));

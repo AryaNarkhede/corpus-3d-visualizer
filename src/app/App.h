@@ -87,6 +87,13 @@ private:
     std::string     m_annotErrorMsg;
     int             m_selectedAnnotId = -1;
 
+    // ── Extras: bidirectional marker ↔ list selection ─────────────────────────
+    float m_leftPressMX = 0.0f;          // mouse position at last left-button press
+    float m_leftPressMY = 0.0f;
+    bool  m_markerSelectRequested = false; // set when a left-click (non-drag) occurs
+    int   m_markerSelectMX = 0;           // screen-space position of that click
+    int   m_markerSelectMY = 0;
+
     // ── Milestone 5: JSON persistence ─────────────────────────────────────────
     char        m_jsonPathBuf[512] = {};   // editable file path for save/load
     std::string m_persistMsg;              // save/load status message shown in UI
