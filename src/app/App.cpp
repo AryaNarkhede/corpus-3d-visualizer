@@ -8,9 +8,14 @@
 #include <imgui_impl_opengl3.h>
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/norm.hpp>
 
 #include "io/JsonPersistence.h"
+#include "io/Screenshot.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -29,6 +34,23 @@
 static const char* kDefaultModelPath    = ASSETS_DIR "/models/cube.obj";
 static const char* kShaderDir           = ASSETS_DIR "/shaders";
 static const char* kDefaultAnnotPath    = DATA_DIR   "/annotations.json";
+static const char* kDefaultScreenshotDir = DATA_DIR  "/screenshots";
+
+// ─── caseInsensitiveContains ─────────────────────────────────────────────────
+// Returns true if 'haystack' contains 'needle' (case-insensitive).
+
+static bool caseInsensitiveContains(const std::string& haystack,
+                                     const std::string& needle)
+{
+    if (needle.empty()) return true;
+    auto it = std::search(
+        haystack.begin(), haystack.end(),
+        needle.begin(),   needle.end(),
+        [](unsigned char a, unsigned char b) {
+            return std::tolower(a) == std::tolower(b);
+        });
+    return it != haystack.end();
+}
 
 // ─── trimString ──────────────────────────────────────────────────────────────
 // Returns a copy of s with leading and trailing whitespace removed.
