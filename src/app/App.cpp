@@ -257,15 +257,17 @@ void App::processFrame()
         // Handle a pending left-click: project markers to screen and pick nearest.
         if (m_markerSelectRequested) {
             m_markerSelectRequested = false;
-            constexpr float kPickRadius = 20.0f; // pixels
+            // Maximum pixel distance from the click to count as a marker hit.
+            constexpr float kMarkerPickRadius = 20.0f;
             int    bestId   = -1;
-            float  bestDist = kPickRadius;
+            float  bestDist = kMarkerPickRadius;
 
             for (const auto& a : annotations) {
                 glm::vec4 clip = viewProj * glm::vec4(a.worldPos, 1.0f);
                 if (clip.w <= 0.0f) continue; // behind camera
                 glm::vec3 ndc = glm::vec3(clip) / clip.w;
                 float sx = ( ndc.x * 0.5f + 0.5f) * static_cast<float>(m_fbWidth);
+                // NDC +Y is up; screen +Y is down – invert to convert to pixel coords.
                 float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(m_fbHeight);
                 float dx = sx - static_cast<float>(m_markerSelectMX);
                 float dy = sy - static_cast<float>(m_markerSelectMY);
@@ -582,7 +584,9 @@ void App::cbMouseButton(GLFWwindow* w, int button, int action, int /*mods*/)
             glfwGetCursorPos(w, &x, &y);
             float dx = static_cast<float>(x) - app->m_leftPressMX;
             float dy = static_cast<float>(y) - app->m_leftPressMY;
-            if (dx * dx + dy * dy < 25.0f) { // within 5-pixel radius
+            // Threshold: 5-pixel radius expressed as squared distance to avoid sqrt.
+            constexpr float kClickThresholdSq = 5.0f * 5.0f;
+            if (dx * dx + dy * dy < kClickThresholdSq) {
                 app->m_markerSelectRequested = true;
                 app->m_markerSelectMX = static_cast<int>(x);
                 app->m_markerSelectMY = static_cast<int>(y);
