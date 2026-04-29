@@ -119,6 +119,7 @@ bool App::init(int width, int height, const char* title)
     glfwSetScrollCallback        (m_window, cbScroll);
     glfwSetCursorPosCallback     (m_window, cbCursorPos);
     glfwSetMouseButtonCallback   (m_window, cbMouseButton);
+    glfwSetKeyCallback           (m_window, cbKey);
 
     // ── GLAD ──────────────────────────────────────────────────────────────────
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
@@ -156,6 +157,12 @@ bool App::init(int width, int height, const char* title)
     m_markerReady = m_markerRenderer.init(kShaderDir);
     if (!m_markerReady) {
         std::fprintf(stderr, "[App] MarkerRenderer initialisation failed\n");
+    }
+
+    // ── Line renderer (Milestone 6) ───────────────────────────────────────────
+    m_lineRendererReady = m_lineRenderer.init(kShaderDir);
+    if (!m_lineRendererReady) {
+        std::fprintf(stderr, "[App] LineRenderer initialisation failed\n");
     }
 
     // ── Load default model ────────────────────────────────────────────────────
@@ -240,6 +247,15 @@ void App::processFrame()
                             m_lastPick.worldPos.x, m_lastPick.worldPos.y,
                             m_lastPick.worldPos.z, m_lastPick.objectId,
                             m_lastPick.depth);
+
+                // ── Route pick to measurement tool ────────────────────────────
+                if (m_mode == InteractionMode::Measure) {
+                    if (m_measCount < kMaxMeasPts) {
+                        m_measPts[m_measCount] = m_lastPick.worldPos;
+                        ++m_measCount;
+                        m_measValid = (m_measCount >= 2);
+                    }
+                }
             }
         }
     }
@@ -270,6 +286,27 @@ void App::processFrame()
         m_markerRenderer.draw(positions, viewProj);
     }
 
+    // ── Measurement lines & markers (Milestone 6) ─────────────────────────────
+    if (m_lineRendererReady && m_measCount >= 1) {
+        float aspect = (m_fbHeight > 0)
+                           ? static_cast<float>(m_fbWidth) / static_cast<float>(m_fbHeight)
+                           : 1.0f;
+        glm::mat4 viewProj = m_camera.projectionMatrix(aspect) * m_camera.viewMatrix();
+
+        // Draw lines between consecutive measurement points.
+        m_lineRenderer.begin();
+        for (int i = 0; i + 1 < m_measCount; ++i)
+            m_lineRenderer.addSegment(m_measPts[i], m_measPts[i + 1]);
+        m_lineRenderer.draw(viewProj, {0.2f, 0.9f, 1.0f, 1.0f}); // cyan
+
+        // Draw cyan dots at each measurement point.
+        if (m_markerReady) {
+            std::vector<glm::vec3> pts(m_measPts.begin(),
+                                       m_measPts.begin() + m_measCount);
+            m_markerRenderer.draw(pts, viewProj);
+        }
+    }
+
     // ── ImGui render (on top of scene) ────────────────────────────────────────
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -282,8 +319,8 @@ void App::processFrame()
 void App::buildUi()
 {
     ImGui::SetNextWindowPos({10.0f, 10.0f}, ImGuiCond_Once);
-    ImGui::SetNextWindowSize({420.0f, 0.0f}, ImGuiCond_Once);
-    ImGui::Begin("3D Corpus Visualiser – Milestone 5");
+    ImGui::SetNextWindowSize({440.0f, 0.0f}, ImGuiCond_Once);
+    ImGui::Begin("3D Corpus Visualiser");
 
     // ── Model section ─────────────────────────────────────────────────────────
     ImGui::SeparatorText("Model");
@@ -297,9 +334,21 @@ void App::buildUi()
         ImGui::TextWrapped("%s", m_statusMsg.c_str());
     }
 
+    // ── Interaction mode toggle ────────────────────────────────────────────────
+    ImGui::SeparatorText("Interaction Mode");
+    {
+        bool inAnnotate = (m_mode == InteractionMode::Annotate);
+        bool inMeasure  = (m_mode == InteractionMode::Measure);
+        if (ImGui::RadioButton("Annotate  [A]", inAnnotate))
+            m_mode = InteractionMode::Annotate;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Measure   [M]", inMeasure))
+            m_mode = InteractionMode::Measure;
+    }
+
     // ── Camera section ────────────────────────────────────────────────────────
     ImGui::SeparatorText("Camera");
-    ImGui::Text("Left-drag: rotate   Scroll: zoom");
+    ImGui::Text("Left-drag: rotate   Scroll: zoom   [R]: reset");
     float dist = m_camera.distance();
     if (ImGui::SliderFloat("Distance", &dist, 0.1f, 50.0f))
         m_camera.setDistance(dist);
@@ -318,23 +367,39 @@ void App::buildUi()
     ImGui::ColorEdit3("Specular", &mat.specular.x);
     ImGui::SliderFloat("Shininess", &mat.shininess, 1.0f, 256.0f);
 
-    // ── Picking section (Milestone 3) ─────────────────────────────────────────
-    ImGui::SeparatorText("Picking");
-    ImGui::Text("Right-click on the model to pick a 3D point.");
-
+    // ── Picking info (condensed) ───────────────────────────────────────────────
+    ImGui::SeparatorText("Last Pick");
     if (m_lastPick.valid) {
         ImGui::TextColored({0.4f, 1.0f, 0.4f, 1.0f}, "Hit!");
-        ImGui::Text("World: (%.3f, %.3f, %.3f)",
+        ImGui::SameLine();
+        ImGui::Text("(%.3f, %.3f, %.3f)  ObjID: %d",
                     m_lastPick.worldPos.x, m_lastPick.worldPos.y,
-                    m_lastPick.worldPos.z);
-        ImGui::Text("Object ID: %d", m_lastPick.objectId);
-        ImGui::Text("Depth: %.4f", m_lastPick.depth);
+                    m_lastPick.worldPos.z, m_lastPick.objectId);
     } else {
-        ImGui::TextDisabled("No pick result yet.");
+        ImGui::TextDisabled("Right-click the model to pick a 3-D point.");
     }
 
-    // ── Annotations section (Milestone 4 + 5) ────────────────────────────────
-    buildAnnotationUi();
+    // ── Measurement section (Milestone 6) ─────────────────────────────────────
+    if (m_mode == InteractionMode::Measure)
+        buildMeasureUi();
+
+    // ── Annotations section (Milestone 4+5+6) ────────────────────────────────
+    if (m_mode == InteractionMode::Annotate)
+        buildAnnotationUi();
+
+    // ── Screenshot section (Milestone 6) ──────────────────────────────────────
+    ImGui::SeparatorText("Screenshot");
+    ImGui::Text("[F12] or click:");
+    ImGui::SameLine();
+    if (ImGui::Button("Capture PNG")) {
+        takeScreenshot();
+    }
+    if (!m_screenshotMsg.empty()) {
+        if (m_screenshotSuccess)
+            ImGui::TextColored({0.4f, 1.0f, 0.4f, 1.0f}, "%s", m_screenshotMsg.c_str());
+        else
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "%s", m_screenshotMsg.c_str());
+    }
 
     ImGui::End();
 }
@@ -384,7 +449,24 @@ void App::buildAnnotationUi()
 
     // ── Annotation list ───────────────────────────────────────────────────────
     const auto& annotations = m_annotStore.all();
+
+    // Search / filter field (Milestone 6)
+    ImGui::Text("Search:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputText("##annotfilter", m_annotFilterBuf, sizeof(m_annotFilterBuf));
+    std::string filterStr = trimString(m_annotFilterBuf);
+
+    int visibleCount = 0;
+    for (const auto& a : annotations)
+        if (caseInsensitiveContains(a.label, filterStr)) ++visibleCount;
+
     ImGui::Text("Annotations: %d", static_cast<int>(annotations.size()));
+    if (!filterStr.empty()) {
+        ImGui::SameLine();
+        ImGui::TextColored({0.7f, 0.7f, 0.3f, 1.0f},
+                           " (showing %d)", visibleCount);
+    }
 
     // Fixed-height scrollable child region for the list.
     ImGui::BeginChild("##annotlist", {0.0f, 160.0f}, true);
@@ -394,6 +476,9 @@ void App::buildAnnotationUi()
     } else {
         int toDelete = -1; // collect the ID to delete (avoids modifying while iterating)
         for (const auto& a : annotations) {
+            // Apply filter
+            if (!caseInsensitiveContains(a.label, filterStr)) continue;
+
             bool selected = (a.id == m_selectedAnnotId);
 
             // Selectable row — clicking highlights the entry.
@@ -485,6 +570,64 @@ void App::loadAnnotations()
     }
 }
 
+// ─── App::buildMeasureUi ──────────────────────────────────────────────────────
+// Sub-section shown when the Measure interaction mode is active.
+// Displays picked measurement points and computes distance / angle.
+
+void App::buildMeasureUi()
+{
+    ImGui::SeparatorText("Measurement");
+    ImGui::TextWrapped("Right-click on the model to place up to 3 measurement points.");
+
+    // ── Point list ────────────────────────────────────────────────────────────
+    for (int i = 0; i < m_measCount; ++i) {
+        ImGui::Text("P%d: (%.4f, %.4f, %.4f)",
+                    i + 1,
+                    m_measPts[i].x, m_measPts[i].y, m_measPts[i].z);
+    }
+
+    // ── Results ───────────────────────────────────────────────────────────────
+    if (m_measCount >= 2) {
+        glm::vec3 ab = m_measPts[1] - m_measPts[0];
+        float dist = glm::length(ab);
+        ImGui::Spacing();
+        ImGui::TextColored({0.2f, 0.9f, 1.0f, 1.0f},
+                           "Distance P1→P2: %.6f", dist);
+    }
+
+    if (m_measCount == 3) {
+        glm::vec3 ba = glm::normalize(m_measPts[0] - m_measPts[1]);
+        glm::vec3 bc = glm::normalize(m_measPts[2] - m_measPts[1]);
+        float cosAngle = glm::clamp(glm::dot(ba, bc), -1.0f, 1.0f);
+        float angleDeg = glm::degrees(std::acos(cosAngle));
+        ImGui::TextColored({0.2f, 0.9f, 1.0f, 1.0f},
+                           "Angle at P2:    %.2f deg", angleDeg);
+    }
+
+    // ── Controls ──────────────────────────────────────────────────────────────
+    ImGui::Spacing();
+    if (m_measCount < kMaxMeasPts) {
+        ImGui::TextDisabled("Right-click to place P%d...", m_measCount + 1);
+    } else {
+        ImGui::TextDisabled("3 points placed.  Click Clear to restart.");
+    }
+
+    if (ImGui::Button("Clear Measurement")) {
+        m_measCount = 0;
+        m_measValid = false;
+    }
+}
+
+// ─── App::takeScreenshot ──────────────────────────────────────────────────────
+
+void App::takeScreenshot()
+{
+    std::string path = Screenshot::generateFilename(kDefaultScreenshotDir);
+    auto result = Screenshot::capture(m_fbWidth, m_fbHeight, path);
+    m_screenshotMsg     = result.message;
+    m_screenshotSuccess = result.success;
+}
+
 // ─── App::shutdown ────────────────────────────────────────────────────────────
 
 void App::shutdown()
@@ -494,6 +637,7 @@ void App::shutdown()
 
     m_picker.shutdown();
     m_markerRenderer.shutdown();
+    m_lineRenderer.shutdown();
     m_renderer.shutdown();
 
     ImGui_ImplOpenGL3_Shutdown();
@@ -583,4 +727,72 @@ void App::cbCursorPos(GLFWwindow* w, double xpos, double ypos)
 
     app->m_lastMouseX = static_cast<float>(xpos);
     app->m_lastMouseY = static_cast<float>(ypos);
+}
+
+// ─── App::cbKey ───────────────────────────────────────────────────────────────
+// Keyboard shortcuts (only on PRESS, ignore REPEAT / RELEASE).
+//
+//   R         – reset camera to default distance / orientation
+//   A         – switch to Annotate mode
+//   M         – switch to Measure mode
+//   Delete    – delete selected annotation (Annotate mode)
+//   Ctrl + S  – save annotations
+//   Ctrl + L  – load annotations
+//   F12       – take screenshot
+// ─────────────────────────────────────────────────────────────────────────────
+
+void App::cbKey(GLFWwindow* w, int key, int /*scancode*/, int action, int mods)
+{
+    if (action != GLFW_PRESS) return;
+
+    auto* app = static_cast<App*>(glfwGetWindowUserPointer(w));
+    if (!app) return;
+
+    // Don't fire shortcuts while ImGui has keyboard focus.
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureKeyboard) return;
+
+    const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0;
+
+    switch (key) {
+    case GLFW_KEY_R:
+        // Reset camera to a comfortable orbit distance.
+        app->m_camera.setTarget({0.0f, 0.0f, 0.0f});
+        if (app->m_model.isLoaded()) {
+            float r = (app->m_model.radius() > 0.0f) ? app->m_model.radius() : 1.0f;
+            app->m_camera.setDistance(r * 3.0f);
+        }
+        break;
+
+    case GLFW_KEY_A:
+        app->m_mode = InteractionMode::Annotate;
+        break;
+
+    case GLFW_KEY_M:
+        app->m_mode = InteractionMode::Measure;
+        break;
+
+    case GLFW_KEY_DELETE:
+        if (app->m_mode == InteractionMode::Annotate &&
+            app->m_selectedAnnotId != -1) {
+            app->m_annotStore.remove(app->m_selectedAnnotId);
+            app->m_selectedAnnotId = -1;
+        }
+        break;
+
+    case GLFW_KEY_S:
+        if (ctrl) app->saveAnnotations();
+        break;
+
+    case GLFW_KEY_L:
+        if (ctrl) app->loadAnnotations();
+        break;
+
+    case GLFW_KEY_F12:
+        app->takeScreenshot();
+        break;
+
+    default:
+        break;
+    }
 }

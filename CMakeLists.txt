@@ -104,11 +104,13 @@ add_executable(corpus_visualizer
     src/graphics/Renderer.cpp
     src/graphics/Framebuffer.cpp
     src/graphics/MarkerRenderer.cpp
+    src/graphics/LineRenderer.cpp
     src/interaction/Picker.cpp
     src/io/JsonPersistence.cpp
+    src/io/Screenshot.cpp
 )
 
-target_include_directories(corpus_visualizer PRIVATE src)
+target_include_directories(corpus_visualizer PRIVATE src external)
 
 # Inject the absolute assets path so runtime shader/model loading works from
 # any working directory (development builds; packaging would copy assets).
