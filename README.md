@@ -302,3 +302,211 @@ cmake -S . -B build && cmake --build build -j
 | **5** ✅ | JSON persistence (save / load annotations) + final hardening |
 | **6** ✅ | Measurement tool · Screenshot export · Search/filter · Keyboard shortcuts |
 
+# Corpus 3D Visualizer — Tech Stack & System Overview
+
+## Tech Stack
+
+### Language & Standard
+| Component | Detail |
+|---|---|
+| **Language** | C++ |
+| **Standard** | C++17 (`std::filesystem`, structured bindings, etc.) |
+| **Build System** | CMake 3.16+ |
+| **Compiler Support** | MSVC (Windows), GCC, Clang (Linux/macOS) |
+
+---
+
+### Core Libraries
+
+| Library | Version | Role | Bundled? |
+|---|---|---|---|
+| **OpenGL** | 3.3 Core Profile | GPU rendering API — all draw calls, shaders, FBOs | System |
+| **GLFW** | 3.3+ | Window creation, OpenGL context, keyboard/mouse input | System |
+| **GLAD** | OpenGL 3.3 Core | OpenGL function loader (resolves GL function pointers at runtime) | ✅ `external/glad/` |
+| **Dear ImGui** | v1.91.9 | Immediate-mode GUI — panels, sliders, buttons, text inputs | ✅ `external/imgui/` |
+| **GLM** | 0.9.9+ | Math library — vectors, matrices, transforms (header-only) | Auto-fetched via CMake FetchContent |
+| **tinyobjloader** | v2.0.0-rc13 | Wavefront `.obj` file parser (single-header) | ✅ `external/tinyobjloader/` |
+| **nlohmann/json** | 3.10+ | JSON serialization/deserialization for annotation persistence | Auto-fetched via CMake FetchContent |
+
+---
+
+### Shader Programs (GLSL 330 core)
+
+| Shader Pair | Purpose |
+|---|---|
+| `mesh.vert` / `mesh.frag` | **Blinn-Phong** lit rendering of 3D models |
+| `picking.vert` / `picking.frag` | **Colour-ID** offscreen pass for mouse picking |
+| `marker.vert` / `marker.frag` | **Point-sprite** annotation markers (yellow circles) |
+
+All shaders live in [assets/shaders/](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/assets/shaders).
+
+---
+
+## System Overview
+
+### Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph Entry
+        main["main.cpp"]
+    end
+
+    subgraph App Layer
+        App["App (orchestrator)"]
+        AS["AnnotationStore"]
+        Types["Types.h (PickResult, Annotation)"]
+    end
+
+    subgraph Graphics Layer
+        Renderer["Renderer (Blinn-Phong)"]
+        Camera["Camera (Arcball orbit)"]
+        Model["Model (OBJ loader)"]
+        Mesh["Mesh (VAO/VBO/EBO)"]
+        Shader["Shader (compile/link)"]
+        FB["Framebuffer (FBO)"]
+        MR["MarkerRenderer"]
+        Lighting["Lighting.h (structs)"]
+    end
+
+    subgraph Interaction Layer
+        Picker["Picker (colour-ID picking)"]
+    end
+
+    subgraph IO Layer
+        JP["JsonPersistence"]
+    end
+
+    subgraph External
+        GLFW["GLFW"]
+        GLAD["GLAD"]
+        ImGui["Dear ImGui"]
+        GLM["GLM"]
+        TOL["tinyobjloader"]
+        NJ["nlohmann/json"]
+    end
+
+    main --> App
+    App --> Renderer
+    App --> Camera
+    App --> Model
+    App --> Picker
+    App --> AS
+    App --> MR
+    App --> JP
+    App --> ImGui
+
+    Renderer --> Shader
+    Renderer --> Lighting
+    Model --> Mesh
+    Model --> TOL
+    Mesh --> GLAD
+    Picker --> FB
+    Picker --> Shader
+    JP --> NJ
+    Camera --> GLM
+    App --> GLFW
+    App --> GLAD
+```
+
+---
+
+### Module Breakdown
+
+#### 1. `src/app/` — Application Layer
+
+| File | Purpose |
+|---|---|
+| [App.h](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/app/App.h) / [App.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/app/App.cpp) | **Central orchestrator** — initializes GLFW/GLAD/ImGui, owns all subsystems, runs the main loop (`init → run → shutdown`), wires GLFW callbacks, builds the ImGui UI |
+| [AnnotationStore.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/app/AnnotationStore.cpp) | In-memory annotation database — `add`, `remove`, `clear`, `replaceAll`, auto-incrementing IDs |
+| [Types.h](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/app/Types.h) | Shared structs: `PickResult` (world position, object ID, depth) and `Annotation` (id, label, worldPos, objectId) |
+
+#### 2. `src/graphics/` — Rendering Layer
+
+| File | Purpose |
+|---|---|
+| [Renderer.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/graphics/Renderer.h) | **Forward renderer** — Blinn-Phong shading, `draw()` for single models, `drawParts()` for multi-part anatomical assemblies with per-part colors |
+| [Camera.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/graphics/Camera.h) | **Arcball orbit camera** — left-drag to rotate, scroll to zoom; produces view & projection matrices |
+| [Model.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/graphics/Model.h) | Loads `.obj` files via tinyobjloader, computes bounding sphere (center + radius) for auto-framing |
+| [Mesh.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/graphics/Mesh.h) | Low-level OpenGL geometry — creates VAO/VBO/EBO, supports indexed and non-indexed draw calls |
+| [Shader.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/graphics/Shader.h) | Compiles & links GLSL shaders, provides a typed uniform-setting API |
+| [Framebuffer.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/graphics/Framebuffer.h) | FBO wrapper — colour + depth attachments, resize, pixel readback (used by Picker) |
+| [MarkerRenderer.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/graphics/MarkerRenderer.h) | Renders annotation markers as yellow circular point-sprites in 3D space |
+| [Lighting.h](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/graphics/Lighting.h) | Data structs for `DirectionalLight` and `Material` (exposed to ImGui for live tweaking) |
+
+#### 3. `src/interaction/` — Interaction Layer
+
+| File | Purpose |
+|---|---|
+| [Picker.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/interaction/Picker.h) | **Colour-ID picking pipeline** — renders the scene to an offscreen FBO with flat-colour object IDs, reads back the pixel under the mouse, unprojects to world-space 3D coordinates |
+
+#### 4. `src/io/` — Persistence Layer
+
+| File | Purpose |
+|---|---|
+| [JsonPersistence.h/.cpp](file:///c:/Users/kunal/OneDrive/Desktop/corpus-3d-visualizer/src/io/JsonPersistence.h) | **JSON save/load** — serializes annotations to a versioned JSON schema (v1), validates on load, handles malformed files gracefully |
+
+---
+
+### Data & Render Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant GLFW
+    participant App
+    participant Picker
+    participant Renderer
+    participant MarkerRenderer
+    participant ImGui
+
+    loop Every Frame
+        GLFW->>App: glfwPollEvents()
+        App->>ImGui: NewFrame + buildUi()
+
+        Note over App,Picker: Picking Pass (offscreen FBO)
+        App->>Picker: renderPickingPass(model, camera)
+        
+        alt Right-click happened
+            App->>Picker: pick(mouseX, mouseY) → PickResult
+        end
+
+        Note over App,Renderer: Scene Pass (default framebuffer)
+        alt Multi-part loaded
+            App->>Renderer: drawParts(parts, camera)
+        else Single model
+            App->>Renderer: draw(model, camera)
+        end
+
+        App->>MarkerRenderer: draw(annotationPositions, viewProj)
+        App->>ImGui: Render (overlay on top of scene)
+        App->>GLFW: swapBuffers()
+    end
+
+    User->>App: Right-click → PickResult stored
+    User->>App: Type label + "Add Annotation"
+    User->>App: "Save" → JsonPersistence writes JSON
+    User->>App: "Load" → JsonPersistence reads JSON
+```
+
+---
+
+### Milestone Roadmap (all completed ✅)
+
+| Milestone | What It Added |
+|---|---|
+| **1** | CMake project + GLFW window + Dear ImGui boilerplate |
+| **2** | OBJ model loading, Blinn-Phong shading, Arcball camera |
+| **3** | FBO colour-picking pipeline (click → 3D world coordinates) |
+| **4** | ImGui annotation workflow (label, store, yellow scene markers) |
+| **5** | JSON persistence (save/load annotations) + error handling |
+
+---
+
+### Key Design Patterns
+
+- **Single-class orchestrator** — `App` owns all subsystems, routes all callbacks, and drives the frame loop
+- **Forward rendering** — Blinn-Phong lighting in a single pass (no deferred pipeline)
+- **Offscreen colour-ID picking** — A second render pass to an FBO encodes object IDs as flat colours; pixel readback + depth unproject gives 3D world coordinates
+- **Milestone-driven architecture** — each feature layer (rendering → picking → annotations → persistence) was added incrementally with clean separation
+- **Bundled dependencies** — GLAD, ImGui, and tinyobjloader are vendored in `external/`; GLM and nlohmann/json are auto-fetched if not found on the system
