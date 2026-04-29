@@ -280,10 +280,16 @@ void App::processFrame()
 
         std::vector<glm::vec3> positions;
         positions.reserve(m_annotStore.all().size());
-        for (const auto& a : m_annotStore.all())
+        int selectedIndex = -1;
+        int idx = 0;
+        for (const auto& a : m_annotStore.all()) {
+            if (a.id == m_selectedAnnotId)
+                selectedIndex = idx;
             positions.push_back(a.worldPos);
+            ++idx;
+        }
 
-        m_markerRenderer.draw(positions, viewProj);
+        m_markerRenderer.draw(positions, viewProj, selectedIndex);
     }
 
     // ── Measurement lines & markers (Milestone 6) ─────────────────────────────
@@ -481,12 +487,19 @@ void App::buildAnnotationUi()
 
             bool selected = (a.id == m_selectedAnnotId);
 
-            // Selectable row — clicking highlights the entry.
+            // Selectable row — single click selects, double-click focuses camera.
             char rowLabel[64];
             std::snprintf(rowLabel, sizeof(rowLabel), "[%d] %s", a.id, a.label.c_str());
             if (ImGui::Selectable(rowLabel, selected,
-                                  ImGuiSelectableFlags_None, {0.0f, 0.0f})) {
-                m_selectedAnnotId = selected ? -1 : a.id; // toggle
+                                  ImGuiSelectableFlags_AllowDoubleClick, {0.0f, 0.0f})) {
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                    // Focus camera on this annotation's world position.
+                    m_selectedAnnotId = a.id;
+                    m_camera.setTarget(a.worldPos);
+                    m_camera.setDistance(0.5f);
+                } else {
+                    m_selectedAnnotId = selected ? -1 : a.id; // toggle on single click
+                }
             }
 
             // World-position tooltip on hover.

@@ -36,7 +36,8 @@ bool MarkerRenderer::init(const std::string& shaderDir)
 // ─── MarkerRenderer::draw ─────────────────────────────────────────────────────
 
 void MarkerRenderer::draw(const std::vector<glm::vec3>& positions,
-                           const glm::mat4&              viewProj) const
+                           const glm::mat4&              viewProj,
+                           int                           selectedIndex) const
 {
     if (positions.empty() || !m_shader.isValid()) return;
 
@@ -53,10 +54,32 @@ void MarkerRenderer::draw(const std::vector<glm::vec3>& positions,
 
     m_shader.use();
     m_shader.setMat4("uViewProjection", viewProj);
-    m_shader.setVec4("uColor", {1.0f, 0.9f, 0.2f, 1.0f}); // bright yellow
 
     glBindVertexArray(m_vao);
-    glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(positions.size()));
+
+    // ── Pass 1: draw all non-selected markers (bright yellow, size 10) ─────────
+    m_shader.setVec4 ("uColor",     {1.0f, 0.9f, 0.2f, 1.0f});
+    m_shader.setFloat("uPointSize", 10.0f);
+
+    auto count = static_cast<GLsizei>(positions.size());
+
+    if (selectedIndex >= 0 && selectedIndex < count) {
+        // Draw everything before the selected index.
+        if (selectedIndex > 0)
+            glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(selectedIndex));
+        // Draw everything after the selected index.
+        GLsizei after = count - static_cast<GLsizei>(selectedIndex + 1);
+        if (after > 0)
+            glDrawArrays(GL_POINTS, static_cast<GLsizei>(selectedIndex) + 1, after);
+
+        // ── Pass 2: draw selected marker (orange, size 16) ─────────────────────
+        m_shader.setVec4 ("uColor",     {1.0f, 0.45f, 0.05f, 1.0f});
+        m_shader.setFloat("uPointSize", 16.0f);
+        glDrawArrays(GL_POINTS, static_cast<GLsizei>(selectedIndex), 1);
+    } else {
+        glDrawArrays(GL_POINTS, 0, count);
+    }
+
     glBindVertexArray(0);
 
     glDisable(GL_PROGRAM_POINT_SIZE);
